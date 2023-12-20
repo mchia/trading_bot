@@ -25,6 +25,7 @@ class Parameters():
     fast_plot = str(fast) + '-day ' + mov_avg  # 13d
     mid_plot = str(fifty_five_ma) + '-day ' + mov_avg  # 55d
     slow_plot = str(two_hundred_ma) + '-day ' + mov_avg  # 200d
+    insert_table = 'trade_results_example'
 
 
 class StockBroker():
@@ -33,8 +34,16 @@ class StockBroker():
         self.conn = sq3.connect("stock_data.db")  # Connect to the existing db file.
         self.cursor = self.conn.cursor()
 
-        self.sql_query = f"""select datetime, open, high, low, close, volume from prices_{timeframe} where ticker = '{ticker}'
-            order by substr(datetime, 7, 4) || '-' || substr(datetime, 4, 2) || '-' || substr(datetime, 1, 2) ASC"""
+        self.sql_query = f"""
+            select datetime,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume
+            from prices_{timeframe}
+            where ticker = '{ticker}'
+            order by substr(date, 7, 4) || '-' || substr(date, 4, 2) || '-' || substr(date, 1, 2) asc"""
 
         # Read data from the database into a Pandas DataFrame
         self.df = pd.read_sql_query(self.sql_query, self.conn)
@@ -99,7 +108,7 @@ class BaseStrategy(bt.Strategy):
                 self.buy_transactions.append([self.trade_id, self.datas[0].datetime.date(0), order.executed.price,
                                               order.executed.comm, order.executed.size])
             else:
-                # Log all selling transactions to a  DF.
+                # Log all selling transactions to a separate DF.
                 self.sell_transactions.append([self.trade_id, self.datas[0].datetime.date(0), order.executed.price,
                                               order.executed.comm])
             self.bar_executed = len(self)
@@ -185,10 +194,9 @@ class BaseStrategy(bt.Strategy):
         # Connect to the database and create a new table
         conn = sq3.connect("stock_data.db")  # Connect to the existing db file.
         cursor = conn.cursor()
-        table = 'trade_results_example'
 
         # Create the INSERT INTO statement with placeholders
-        insert_sql = f"INSERT INTO {table} ({', '.join(transaction_data.columns)}) VALUES ({', '.join([':' + col for col in transaction_data.columns])})"
+        insert_sql = f"INSERT INTO {Parameters.insert_table} ({', '.join(transaction_data.columns)}) VALUES ({', '.join([':' + col for col in transaction_data.columns])})"
 
         # Create a list of dictionaries for the data
         data_to_insert = []
@@ -204,51 +212,47 @@ class BaseStrategy(bt.Strategy):
         conn.commit()
         conn.close()
 
+    def next(self):
+        if self.order:
+            return
+
+        if not self.position:
+            if self.buy_signal():
+                self.size_to_buy = math.floor(self.broker.getvalue() / self.dataclose[0]) * 0.8
+                self.trade_id += 1
+                self.order = self.buy(size=self.size_to_buy, trade_id=self.trade_id)
+
+        elif self.sell_signal():
+            self.order = self.sell(size=self.position.size, trade_id=self.trade_id, exectype=bt.Order.StopTrail, trailpercent=0.05)
+
+
 class strategies():
     class RSIStrategy(BaseStrategy):
+        rsi_period = 14
+        oversold = 30
+        overbought = 70
+
         def __init__(self, *args, **kwargs):
             super(strategies.RSIStrategy, self).__init__(*args, **kwargs)
-            self.rsi = RSI(period=Parameters.rsi_period)
+            self.rsi = bt.indicators.RSI(period=self.rsi_period)
 
         def buy_signal(self):
             return (
-                    self.position.size == 0
-                    and self.rsi < Parameters.oversold
-                    )
+                self.position.size == 0
+                and self.rsi < self.oversold
+            )
 
         def sell_signal(self):
             return (
-                    self.position.size > 0
-                    and self.rsi > Parameters.overbought
-                    )
-
-        def next(self):
-            if self.order:
-                return
-
-            if not self.position:
-                if self.buy_signal():
-                    self.size_to_buy = math.floor(self.broker.getvalue() / self.dataclose[0]) * 0.8
-                    self.trade_id += 1
-                    self.order = self.buy(size=self.size_to_buy, trade_id=self.trade_id)
-
-            elif self.sell_signal():
-                self.order = self.sell(size=self.position.size, trade_id=self.trade_id, exectype=bt.Order.StopTrail,
-                                    trailpercent=0.05)
-
+                self.position.size > 0
+                and self.rsi > self.overbought
+            )
 
     class GoldenCross(BaseStrategy):
-        params = dict(
-            fifty_five_ma=Parameters.fifty_five_ma,
-            two_hundred_ma=Parameters.two_hundred_ma
-        )
-
         def __init__(self, *args, **kwargs):
             super(strategies.GoldenCross, self).__init__(*args, **kwargs)
-            self.fifty_five = Parameters.ma_type(self.datas[0].close, period=self.params.fifty_five_ma,
-                                                plotname=Parameters.mid_plot)
-            self.two_hundred = Parameters.ma_type(self.datas[0].close, period=self.params.two_hundred_ma,
-                                                plotname=Parameters.slow_plot)
+            self.fifty_five = Parameters.ma_type(self.datas[0].close, period=Parameters.fifty_five_ma, plotname=Parameters.mid_plot)
+            self.two_hundred = Parameters.ma_type(self.datas[0].close, period=Parameters.two_hundred_ma, plotname=Parameters.slow_plot)
             self.goldencross = bt.indicators.CrossOver(self.fifty_five, self.two_hundred)
 
         def buy_signal(self):
@@ -263,20 +267,6 @@ class strategies():
                     self.position.size > 0
                     and self.goldencross == -1
                     )
-
-        def next(self):
-            if self.order:
-                return
-
-            if not self.position:
-                if self.buy_signal():
-                    self.size_to_buy = math.floor(self.broker.getvalue() / self.dataclose[0]) * 0.8
-                    self.trade_id += 1
-                    self.order = self.buy(size=self.size_to_buy, trade_id=self.trade_id)
-
-            elif self.sell_signal():
-                self.order = self.sell(size=self.position.size, trade_id=self.trade_id, exectype=bt.Order.StopTrail,
-                                    trailpercent=0.05)
 
 class strategy_list():
     strategy_names = [strategy_class.__name__ for strategy_name, strategy_class in inspect.getmembers(strategies) if
@@ -314,7 +304,7 @@ class strategy_list():
         cross join strategies
         where ticker || interval || strategy not in 
         (select distinct ticker || interval || strategy
-        from trade_results_example)
+        from {Parameters.insert_table})
     """
 
     # Execute the query to get the list of available stocks and intervals
@@ -322,33 +312,41 @@ class strategy_list():
     # Close the database connection
     conn.close()
 
+# Iterate over each row in the ticker_interval_df DataFrame
 for index, row in strategy_list.ticker_interval_df.iterrows():
-    try:
-        # Get the ticker and interval for the current row
-        current_ticker = row['ticker']
-        current_interval = row['interval']
+    current_ticker = row['ticker']
+    current_interval = row['interval']
+    current_strategy = row['strategy']
 
-        # Create an instance of StockBroker for the current ticker and interval
+    try:
+        # Create a new instance of the StockBroker for each strategy
         sb = StockBroker(ticker=current_ticker, timeframe=current_interval)
 
-        # Get all strategy classes from the 'strategies' class
-        strategies_to_run = strategy_list.strategy_names
-        
-        # Add each strategy to the cerebro
-        for strategy_class in strategies_to_run:
-            strategy_class = getattr(strategies, strategy_class)
-            sb.cerebro.addstrategy(strategy_class, current_ticker=current_ticker, current_interval=current_interval)
-            sb.cerebro.run()
-        
-        # Access and print trade stats for each strategy
-        for strategy_instance in sb.cerebro.runstrats:
-            strategy_instance = strategy_instance[0]
-            # strategy_instance.print_trade_stats()
-            strategy_instance.transaction_data()
-            print(f"Successfully processed {current_ticker} - {current_interval} - {strategy_instance.__class__.__name__}")
+        # Get the corresponding strategy class based on the strategy name
+        strategy_class = getattr(strategies, current_strategy)
+
+        # Add the current strategy to the cerebro
+        sb.cerebro.addstrategy(strategy_class, current_ticker=current_ticker, current_interval=current_interval)
+
+        # Run the backtest
+        sb.cerebro.run()
+
+        # Plot the results
+        # sb.cerebro.plot()
+
+        # Get the strategy instance
+        strategy_instance = sb.cerebro.runstrats[0][0]
+
+        # Print trade statistics
+        # strategy_instance.print_trade_stats()
+
+        # Save transaction data to the database
+        strategy_instance.transaction_data()
+
+        print(f"Successfully processed {current_ticker} - {current_interval} using {strategy_class.__name__}")
 
     except Exception as e:
         # Capture errors and where they are so it doesn't abruptly end the loop.
-        print(f"Error processing {current_ticker} - {current_interval} - {strategy_instance.__class__.__name__}: {e}")
+        print(f"Error processing {current_ticker} - {current_interval} - {current_strategy}: {e}")
 
-print("Completed")
+print("Backtesting completed and inserted into database")

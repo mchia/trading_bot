@@ -238,7 +238,6 @@ class strategies():
                                     trailpercent=0.05)
 
 
-
 # Connect to the database and get the list of available stocks and intervals
 conn = sq3.connect("stock_data.db")
 cursor = conn.cursor()
@@ -284,14 +283,14 @@ for index, row in ticker_interval_df.iterrows():
 
         # Create an instance of StockBroker for the current ticker and interval
         sb = StockBroker(ticker=current_ticker, timeframe=current_interval)
-        sb.cerebro.addstrategy(strategies.GoldenCross, current_ticker=current_ticker, current_interval=current_interval)
+        sb.cerebro.addstrategy(strategies.RSIStrategy, current_ticker=current_ticker, current_interval=current_interval)
         sb.cerebro.run()
-
+        sb.cerebro.plot()
         # Access the strategy instance and print trade stats
-        strategy_instance = sb.cerebro.runstrats[0][0]
+        # strategy_instance = sb.cerebro.runstrats[0][0]
 
-        # Insert trade results into the database
-        strategy_instance.transaction_data()
+        # # Insert trade results into the database
+        # strategy_instance.transaction_data()
 
         print(f"Successfully processed {current_ticker} - {current_interval}")
 
