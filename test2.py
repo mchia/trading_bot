@@ -33,7 +33,8 @@ class StockBroker():
         self.conn = sq3.connect("stock_data.db")  # Connect to the existing db file.
         self.cursor = self.conn.cursor()
 
-        self.sql_query = f"select datetime, open, high, low, close, volume from prices_{timeframe} where ticker = '{ticker}'"
+        self.sql_query = f"""select datetime, open, high, low, close, volume from prices_{timeframe} where ticker = '{ticker}'
+            order by substr(datetime, 7, 4) || '-' || substr(datetime, 4, 2) || '-' || substr(datetime, 1, 2) ASC"""
 
         # Read data from the database into a Pandas DataFrame
         self.df = pd.read_sql_query(self.sql_query, self.conn)
@@ -184,7 +185,7 @@ class BaseStrategy(bt.Strategy):
         # Connect to the database and create a new table
         conn = sq3.connect("stock_data.db")  # Connect to the existing db file.
         cursor = conn.cursor()
-        table = 'trade_results_test'
+        table = 'trade_results_example'
 
         # Create the INSERT INTO statement with placeholders
         insert_sql = f"INSERT INTO {table} ({', '.join(transaction_data.columns)}) VALUES ({', '.join([':' + col for col in transaction_data.columns])})"
@@ -236,46 +237,46 @@ class strategies():
                                     trailpercent=0.05)
 
 
-    # class GoldenCross(BaseStrategy):
-    #     params = dict(
-    #         fifty_five_ma=Parameters.fifty_five_ma,
-    #         two_hundred_ma=Parameters.two_hundred_ma
-    #     )
+    class GoldenCross(BaseStrategy):
+        params = dict(
+            fifty_five_ma=Parameters.fifty_five_ma,
+            two_hundred_ma=Parameters.two_hundred_ma
+        )
 
-    #     def __init__(self, *args, **kwargs):
-    #         super(strategies.GoldenCross, self).__init__(*args, **kwargs)
-    #         self.fifty_five = Parameters.ma_type(self.datas[0].close, period=self.params.fifty_five_ma,
-    #                                             plotname=Parameters.mid_plot)
-    #         self.two_hundred = Parameters.ma_type(self.datas[0].close, period=self.params.two_hundred_ma,
-    #                                             plotname=Parameters.slow_plot)
-    #         self.goldencross = bt.indicators.CrossOver(self.fifty_five, self.two_hundred)
+        def __init__(self, *args, **kwargs):
+            super(strategies.GoldenCross, self).__init__(*args, **kwargs)
+            self.fifty_five = Parameters.ma_type(self.datas[0].close, period=self.params.fifty_five_ma,
+                                                plotname=Parameters.mid_plot)
+            self.two_hundred = Parameters.ma_type(self.datas[0].close, period=self.params.two_hundred_ma,
+                                                plotname=Parameters.slow_plot)
+            self.goldencross = bt.indicators.CrossOver(self.fifty_five, self.two_hundred)
 
-    #     def buy_signal(self):
-    #         return (
-    #                 self.position.size == 0
-    #                 and self.goldencross == 1
-    #                 and self.data.close[0] > (self.two_hundred[0] and self.two_hundred[-1])
-    #                 )
+        def buy_signal(self):
+            return (
+                    self.position.size == 0
+                    and self.goldencross == 1
+                    and self.data.close[0] > (self.two_hundred[0] and self.two_hundred[-1])
+                    )
 
-    #     def sell_signal(self):
-    #         return (
-    #                 self.position.size > 0
-    #                 and self.goldencross == -1
-    #                 )
+        def sell_signal(self):
+            return (
+                    self.position.size > 0
+                    and self.goldencross == -1
+                    )
 
-    #     def next(self):
-    #         if self.order:
-    #             return
+        def next(self):
+            if self.order:
+                return
 
-    #         if not self.position:
-    #             if self.buy_signal():
-    #                 self.size_to_buy = math.floor(self.broker.getvalue() / self.dataclose[0]) * 0.8
-    #                 self.trade_id += 1
-    #                 self.order = self.buy(size=self.size_to_buy, trade_id=self.trade_id)
+            if not self.position:
+                if self.buy_signal():
+                    self.size_to_buy = math.floor(self.broker.getvalue() / self.dataclose[0]) * 0.8
+                    self.trade_id += 1
+                    self.order = self.buy(size=self.size_to_buy, trade_id=self.trade_id)
 
-    #         elif self.sell_signal():
-    #             self.order = self.sell(size=self.position.size, trade_id=self.trade_id, exectype=bt.Order.StopTrail,
-    #                                 trailpercent=0.05)
+            elif self.sell_signal():
+                self.order = self.sell(size=self.position.size, trade_id=self.trade_id, exectype=bt.Order.StopTrail,
+                                    trailpercent=0.05)
 
 class strategy_list():
     strategy_names = [strategy_class.__name__ for strategy_name, strategy_class in inspect.getmembers(strategies) if
@@ -337,18 +338,17 @@ for index, row in strategy_list.ticker_interval_df.iterrows():
         for strategy_class in strategies_to_run:
             strategy_class = getattr(strategies, strategy_class)
             sb.cerebro.addstrategy(strategy_class, current_ticker=current_ticker, current_interval=current_interval)
-        
-        sb.cerebro.run()
+            sb.cerebro.run()
         
         # Access and print trade stats for each strategy
         for strategy_instance in sb.cerebro.runstrats:
             strategy_instance = strategy_instance[0]
-            strategy_instance.print_trade_stats()
-            # strategy_instance.transaction_data()
-            # print(f"Successfully processed {current_ticker} - {current_interval} - {strategy_instance.__class__.__name__}")
+            # strategy_instance.print_trade_stats()
+            strategy_instance.transaction_data()
+            print(f"Successfully processed {current_ticker} - {current_interval} - {strategy_instance.__class__.__name__}")
 
     except Exception as e:
         # Capture errors and where they are so it doesn't abruptly end the loop.
-        print(f"Error processing {current_ticker} - {current_interval}: {e}")
+        print(f"Error processing {current_ticker} - {current_interval} - {strategy_instance.__class__.__name__}: {e}")
 
 print("Completed")

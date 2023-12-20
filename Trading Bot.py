@@ -31,7 +31,16 @@ class StockBroker():
         self.conn = sq3.connect("stock_data.db")  # Connect to the existing db file.
         self.cursor = self.conn.cursor()
 
-        self.sql_query = f"select datetime, open, high, low, close, volume from prices_{timeframe} where ticker = '{ticker}'"
+        self.sql_query = f"""
+            select datetime,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume
+            from prices_{timeframe}
+            where ticker = '{ticker}'
+            order by substr(date, 7, 4) || '-' || substr(date, 4, 2) || '-' || substr(date, 1, 2) asc"""
 
         # Read data from the database into a Pandas DataFrame
         self.df = pd.read_sql_query(self.sql_query, self.conn)
@@ -413,15 +422,16 @@ class GoldenCross(bt.Strategy):
                 self.order = self.sell(size=self.position.size, trade_id=self.trade_id, exectype=bt.Order.StopTrail,
                                     trailpercent=0.05)
 
-current_ticker = 'GOOG'
+current_ticker = 'BTC/USDT'
 current_interval = '1d'
 
 
 sb = StockBroker(ticker=current_ticker, timeframe=current_interval)
-sb.cerebro.addstrategy(strategies.RSI, current_ticker=current_ticker, current_interval=current_interval)
+sb.cerebro.addstrategy(GoldenCross, current_ticker=current_ticker, current_interval=current_interval)
 sb.cerebro.run()
-strategy_instance = sb.cerebro.runstrats[0][0]
-strategy_instance.print_trade_stats()
+sb.cerebro.plot()
+# strategy_instance = sb.cerebro.runstrats[0][0]
+# strategy_instance.print_trade_stats()
 
 # # Access the strategy instance and print trade stats
 # strategy_instance = sb.cerebro.runstrats[0][0]
