@@ -330,15 +330,9 @@ for index, row in strategy_list.ticker_interval_df.iterrows():
 
         # Run the backtest
         sb.cerebro.run()
-
-        # Plot the results
-        # sb.cerebro.plot()
-
+        
         # Get the strategy instance
         strategy_instance = sb.cerebro.runstrats[0][0]
-
-        # Print trade statistics
-        # strategy_instance.print_trade_stats()
 
         # Save transaction data to the database
         strategy_instance.transaction_data()
