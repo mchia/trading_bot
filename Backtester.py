@@ -11,10 +11,6 @@ from backtrader.indicators import EMA, MACD, RSI, BollingerBands
 def thousand_separator(value, decimals=2):
     return '{:,.{}f}'.format(value, decimals)
 
-
-class Parameters():
-    insert_table = 'trade_results_example'
-
 class StockBroker():
     def __init__(self, ticker, timeframe):
         # Connect to the database and create a new table
@@ -51,6 +47,8 @@ class StockBroker():
 
 
 class BaseStrategy(bt.Strategy):
+    insert_table = 'trade_results_example'
+
     def __init__(self, current_ticker, current_interval):
         # Current ticker and interval
         self.current_ticker = current_ticker
@@ -121,26 +119,9 @@ class BaseStrategy(bt.Strategy):
 
         self.trades += 1
         self.total_fees += fees
-
-        pnl = thousand_separator(trade.pnl)
-        pnlcomm = thousand_separator(trade.pnlcomm)
-        sumcomm = thousand_separator(trade.pnlcomm - trade.pnl)
         self.trade_results.append([self.trade_id, round(trade.pnl, 0), round(trade.pnlcomm, 0),
                                   round(sb.cerebro.broker.get_cash(), 0)])
-
-    def print_trade_stats(self):
-        ending_balance = self.total_net_profit
-        account_growth = round(100 * ((ending_balance - sb.initial_balance) / sb.initial_balance), 2)
-        ending_balance = thousand_separator(ending_balance)
-        print(
-            f'Starting Balance: ${thousand_separator(sb.initial_balance)}, Ending Balance: ${ending_balance}, Account Growth: {account_growth}%')
-        print(
-            f'Total Gross Profit: ${thousand_separator(self.total_gross_profit - sb.initial_balance)}, Total Net Profit: ${thousand_separator(self.total_net_profit - sb.initial_balance)}')
-        print(
-            f'Total Gross Losses: ${thousand_separator(self.total_gross_losses)}, Total Net Losses: ${thousand_separator(self.total_net_losses)}')
-        print(f'Total Fees: ${thousand_separator(self.total_fees)}')
-        print(f'Total Trades: {self.trades}, Wins: {self.wins}, Losses: {self.losses}')
-
+        
     def transaction_data(self):
         buy_table = pd.DataFrame(data=self.buy_transactions,
                                 columns=['id', 'entry_date', 'entry_price', 'buying_fee', 'shares'])
@@ -181,9 +162,9 @@ class BaseStrategy(bt.Strategy):
         # Connect to the database and create a new table
         conn = sq3.connect("stock_data.db")  # Connect to the existing db file.
         cursor = conn.cursor()
-
+        insert_table = 'trade_results_example'
         # Create the INSERT INTO statement with placeholders
-        insert_sql = f"INSERT INTO {Parameters.insert_table} ({', '.join(transaction_data.columns)}) VALUES ({', '.join([':' + col for col in transaction_data.columns])})"
+        insert_sql = f"INSERT INTO {insert_table} ({', '.join(transaction_data.columns)}) VALUES ({', '.join([':' + col for col in transaction_data.columns])})"
 
         # Create a list of dictionaries for the data
         data_to_insert = []
@@ -321,7 +302,7 @@ class strategy_list():
         cross join strategies
         where ticker || interval || strategy not in 
         (select distinct ticker || interval || strategy
-        from {Parameters.insert_table})
+        from {BaseStrategy.insert_table})
     """
 
     # Execute the query to get the list of available stocks and intervals

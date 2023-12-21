@@ -18,7 +18,7 @@ def insert_data(folder, asset_type):
 
     file_patterns = [
         os.path.join(folder, "*D1.csv"),
-        os.path.join(folder, "*H4.csv"),
+        # os.path.join(folder, "*H4.csv"),
         os.path.join(folder, "*H1.csv"),
         os.path.join(folder, "*M30.csv"),
         os.path.join(folder, "*M15.csv")
@@ -92,6 +92,6 @@ def insert_data(folder, asset_type):
 # # Call the function for each asset type
 insert_data(folders.crypto_data, 'crypto')
 insert_data(folders.forex_data, 'forex')
-insert_data(folders.asx_data, 'asx')
-insert_data(folders.us_equities_data, 'us_equities')
+# insert_data(folders.asx_data, 'asx')
+# insert_data(folders.us_equities_data, 'us_equities')
 
