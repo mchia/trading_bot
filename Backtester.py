@@ -3,10 +3,9 @@ import math
 import sqlite3 as sq3
 from datetime import date, datetime, timedelta
 
-import backtrader as bt  # backtesting library
-import matplotlib.pyplot as plt
+import backtrader as bt
 import pandas as pd
-from backtrader.indicators import RSI
+from backtrader.indicators import EMA, MACD, RSI, BollingerBands
 
 
 def thousand_separator(value, decimals=2):
@@ -14,19 +13,7 @@ def thousand_separator(value, decimals=2):
 
 
 class Parameters():
-    rsi_period = 14  # Time period in days for RSI
-    oversold = 30  # RSI range where stock is considered oversold
-    overbought = 70  # RSI Range where stock is considered overbought
-    fast = 13  # 13d Moving Average
-    fifty_five_ma = 55  # 55d Moving Average
-    two_hundred_ma = 200  # 200d Moving Average
-    mov_avg = 'EMA'
-    ma_type = getattr(bt.indicators, mov_avg)
-    fast_plot = str(fast) + '-day ' + mov_avg  # 13d
-    mid_plot = str(fifty_five_ma) + '-day ' + mov_avg  # 55d
-    slow_plot = str(two_hundred_ma) + '-day ' + mov_avg  # 200d
     insert_table = 'trade_results_example'
-
 
 class StockBroker():
     def __init__(self, ticker, timeframe):
@@ -228,31 +215,39 @@ class BaseStrategy(bt.Strategy):
 
 class strategies():
     class RSIStrategy(BaseStrategy):
-        rsi_period = 14
-        oversold = 30
-        overbought = 70
+        # Parameters for RSI
+        params = (
+            ('rsi_period', 14),
+            ('oversold', 30),
+            ('overbought', 70)
+            )
 
         def __init__(self, *args, **kwargs):
             super(strategies.RSIStrategy, self).__init__(*args, **kwargs)
-            self.rsi = bt.indicators.RSI(period=self.rsi_period)
+            self.rsi = bt.indicators.RSI(period=self.params.rsi_period)
 
         def buy_signal(self):
             return (
                 self.position.size == 0
-                and self.rsi < self.oversold
+                and self.rsi < self.params.oversold
             )
 
         def sell_signal(self):
             return (
                 self.position.size > 0
-                and self.rsi > self.overbought
+                and self.rsi > self.params.overbought
             )
 
     class GoldenCross(BaseStrategy):
+        params = (
+            ('fast', 55),
+            ('slow', 200)
+            )
+
         def __init__(self, *args, **kwargs):
             super(strategies.GoldenCross, self).__init__(*args, **kwargs)
-            self.fifty_five = Parameters.ma_type(self.datas[0].close, period=Parameters.fifty_five_ma, plotname=Parameters.mid_plot)
-            self.two_hundred = Parameters.ma_type(self.datas[0].close, period=Parameters.two_hundred_ma, plotname=Parameters.slow_plot)
+            self.fifty_five = EMA(self.datas[0].close, period=self.params.fast)
+            self.two_hundred = EMA(self.datas[0].close, period=self.params.slow)
             self.goldencross = bt.indicators.CrossOver(self.fifty_five, self.two_hundred)
 
         def buy_signal(self):
@@ -266,6 +261,28 @@ class strategies():
             return (
                     self.position.size > 0
                     and self.goldencross == -1
+                    )
+        
+    class BollingerBands(BaseStrategy):
+        params = (
+            ('period', 20),
+            ('stddev', 2)
+            )
+
+        def __init__(self, *args, **kwargs):
+            super(strategies.BollingerBands, self).__init__(*args, **kwargs)
+            self.bbands = BollingerBands(period=self.params.period, devfactor=self.params.stddev)
+
+        def buy_signal(self):
+            return (
+                    self.position.size == 0
+                    and self.data.close[0] <= self.bbands.lines.bot[0]
+                    )
+
+        def sell_signal(self):
+            return (
+                    self.position.size > 0
+                    and self.data.close[0] >= self.bbands.lines.top[0]
                     )
 
 class strategy_list():
@@ -330,7 +347,7 @@ for index, row in strategy_list.ticker_interval_df.iterrows():
 
         # Run the backtest
         sb.cerebro.run()
-        
+
         # Get the strategy instance
         strategy_instance = sb.cerebro.runstrats[0][0]
 
